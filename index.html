@@ -132,6 +132,131 @@
         text-decoration: none;
       }
 
+      .preload-layer {
+        position: fixed;
+        inset: 0;
+        z-index: 9000;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+        background:
+          radial-gradient(circle at 50% 22%, rgba(101, 199, 255, 0.18), transparent 24rem),
+          radial-gradient(circle at 72% 76%, rgba(141, 230, 195, 0.18), transparent 24rem),
+          linear-gradient(180deg, #ffffff 0%, #f2f7fb 100%);
+        transition:
+          opacity 520ms ease,
+          visibility 520ms ease;
+      }
+
+      .preload-layer.is-hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .preload-card {
+        width: min(100%, 30rem);
+        padding: 2.2rem;
+        border: 1px solid var(--line);
+        border-radius: 1.75rem;
+        background: rgba(255, 255, 255, 0.84);
+        box-shadow: 0 1.6rem 4.5rem rgba(24, 32, 51, 0.14);
+        text-align: center;
+        backdrop-filter: blur(1rem) saturate(1.15);
+        -webkit-backdrop-filter: blur(1rem) saturate(1.15);
+      }
+
+      .preload-ring {
+        --progress: 0%;
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 8.8rem;
+        height: 8.8rem;
+        margin: 0 auto 1.35rem;
+        border-radius: 50%;
+        background:
+          conic-gradient(from -90deg, #65c7ff var(--progress), rgba(24, 32, 51, 0.08) 0),
+          rgba(255, 255, 255, 0.72);
+        box-shadow:
+          0 1rem 2.4rem rgba(101, 199, 255, 0.2),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.86);
+      }
+
+      .preload-ring::before {
+        content: "";
+        position: absolute;
+        inset: 0.55rem;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: inset 0 0 0 1px rgba(72, 84, 106, 0.08);
+      }
+
+      .preload-avatar {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        width: 5.55rem;
+        height: 5.55rem;
+        border-radius: 1.25rem;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .preload-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .preload-percent {
+        position: absolute;
+        right: -0.35rem;
+        bottom: 0.3rem;
+        z-index: 2;
+        min-width: 3.1rem;
+        padding: 0.36rem 0.48rem;
+        border-radius: 999px;
+        background: #182033;
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .preload-card h1 {
+        margin: 0 0 0.65rem;
+        font-size: clamp(2.1rem, 6vw, 3.6rem);
+        line-height: 0.95;
+      }
+
+      .preload-story {
+        min-height: 3.4rem;
+        margin: 0 auto 1.1rem;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.72;
+      }
+
+      .preload-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        color: rgba(24, 32, 51, 0.58);
+        font-size: 0.85rem;
+        font-weight: 700;
+      }
+
+      .preload-status::before {
+        content: "";
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: #65c7ff;
+        box-shadow: 0 0 0.8rem rgba(101, 199, 255, 0.72);
+      }
+
       .glass {
         border: 1px solid var(--line);
         background:
@@ -1152,6 +1277,20 @@
       </div>
     </section>
 
+    <section class="preload-layer" id="preloadLayer" aria-label="正在加载 SOHO云知首页">
+      <div class="preload-card">
+        <div class="preload-ring" id="preloadRing">
+          <div class="preload-avatar">
+            <img src="https://soho-design-assets-1415078226.cos.ap-hongkong.myqcloud.com/homepage/homepage-20260625-video-v2/assets/avatar-optimized.png" alt="SOHO云知头像" />
+          </div>
+          <div class="preload-percent" id="preloadPercent">0%</div>
+        </div>
+        <h1>云知正在准备</h1>
+        <p class="preload-story" id="preloadStory">我是苏云知，正在把首页的灯光、影像和入口一件件摆好。</p>
+        <div class="preload-status" id="preloadStatus">加载核心素材中</div>
+      </div>
+    </section>
+
     <canvas id="scene" aria-label="SOHO云知小助手 3D 主页"></canvas>
     <div class="soft-overlay"></div>
 
@@ -1208,7 +1347,7 @@
     <section class="intro" id="intro" aria-label="SOHO云知开场动画">
       <div class="intro-card glass">
         <div class="intro-video">
-          <video id="introVideo" src="https://soho-design-assets-1415078226.cos.ap-hongkong.myqcloud.com/homepage/homepage-20260625-video-v2/assets/intro-hd.mp4" autoplay muted playsinline preload="auto" poster="https://soho-design-assets-1415078226.cos.ap-hongkong.myqcloud.com/homepage/homepage-20260625-video-v2/assets/intro-poster.jpg"></video>
+          <video id="introVideo" src="https://soho-design-assets-1415078226.cos.ap-hongkong.myqcloud.com/homepage/homepage-20260625-video-v2/assets/intro-hd.mp4" muted playsinline preload="auto" poster="https://soho-design-assets-1415078226.cos.ap-hongkong.myqcloud.com/homepage/homepage-20260625-video-v2/assets/intro-poster.jpg"></video>
         </div>
         <div class="intro-copy">
           <div class="small">SOHO YUNZHI ONLINE</div>
@@ -1398,6 +1537,11 @@
         prevScene: document.querySelector("#prevScene"),
         nextScene: document.querySelector("#nextScene"),
         cursorRing: document.querySelector("#cursorRing"),
+        preloadLayer: document.querySelector("#preloadLayer"),
+        preloadRing: document.querySelector("#preloadRing"),
+        preloadPercent: document.querySelector("#preloadPercent"),
+        preloadStory: document.querySelector("#preloadStory"),
+        preloadStatus: document.querySelector("#preloadStatus"),
       };
 
       let started = false;
@@ -2013,6 +2157,106 @@
         window.location.reload();
       }
 
+      function wait(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+      }
+
+      function withTimeout(promise, ms) {
+        return Promise.race([
+          promise,
+          wait(ms).then(() => undefined),
+        ]);
+      }
+
+      function updatePreload(progress, status) {
+        const value = Math.max(0, Math.min(100, Math.round(progress)));
+        if (ui.preloadRing) ui.preloadRing.style.setProperty("--progress", `${value}%`);
+        if (ui.preloadPercent) ui.preloadPercent.textContent = `${value}%`;
+        if (status && ui.preloadStatus) ui.preloadStatus.textContent = status;
+      }
+
+      function loadImageAsset(src) {
+        if (!src) return Promise.resolve();
+        return new Promise((resolve) => {
+          const image = new Image();
+          image.onload = resolve;
+          image.onerror = resolve;
+          image.src = src;
+          if (image.complete) resolve();
+        });
+      }
+
+      function loadVideoAsset(src) {
+        if (!src) return Promise.resolve();
+        return new Promise((resolve) => {
+          const video = document.createElement("video");
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            video.removeEventListener("loadeddata", finish);
+            video.removeEventListener("canplay", finish);
+            video.removeEventListener("canplaythrough", finish);
+            video.removeEventListener("error", finish);
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+            resolve();
+          };
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = "auto";
+          video.addEventListener("loadeddata", finish, { once: true });
+          video.addEventListener("canplay", finish, { once: true });
+          video.addEventListener("canplaythrough", finish, { once: true });
+          video.addEventListener("error", finish, { once: true });
+          video.src = src;
+          video.load();
+          if (video.readyState >= 2) finish();
+        });
+      }
+
+      async function runPreloader() {
+        if (!ui.preloadLayer) return;
+        const stories = [
+          "我是苏云知，正在把首页的灯光、影像和入口一件件摆好。",
+          "我先把开场影像收进后台，等你看到它时，它应该完整地亮起来。",
+          "头像、二维码、教程和联系入口也在排队就位，不让页面半截出现。",
+          "再等我确认一次素材状态，准备好后会直接进入 SOHO 云知主页。",
+        ];
+        let storyIndex = 0;
+        const storyTimer = window.setInterval(() => {
+          storyIndex = (storyIndex + 1) % stories.length;
+          if (ui.preloadStory) ui.preloadStory.textContent = stories[storyIndex];
+        }, 1800);
+
+        const avatarSrc = document.querySelector(".brand-mark img")?.src;
+        const assets = [
+          { name: "头像", run: () => loadImageAsset(avatarSrc) },
+          { name: "开场海报", run: () => loadImageAsset(ui.introVideo?.poster) },
+          { name: "体验二维码", run: () => loadImageAsset(CONFIG.qrImage) },
+          { name: "教程文件", run: () => fetch(CONFIG.tutorialJson, { cache: "force-cache" }).catch(() => undefined) },
+          { name: "首页视频", run: () => loadVideoAsset(CONFIG.introVideo) },
+          { name: "联系视频", run: () => loadVideoAsset(CONFIG.contactVideo) },
+        ];
+
+        let finished = 0;
+        updatePreload(8, "加载核心素材中");
+        const minDelay = wait(2800);
+        const tasks = assets.map((asset) => withTimeout(asset.run(), 12000).then(() => {
+          finished += 1;
+          updatePreload(8 + (finished / assets.length) * 88, `已加载：${asset.name}`);
+        }));
+
+        await Promise.all([minDelay, Promise.all(tasks)]);
+        window.clearInterval(storyTimer);
+        if (ui.preloadStory) ui.preloadStory.textContent = "素材已准备好，正在进入主页。";
+        updatePreload(100, "准备进入主页");
+        await wait(450);
+        ui.preloadLayer.classList.add("is-hidden");
+        window.setTimeout(() => ui.preloadLayer?.remove(), 700);
+      }
+
       async function setupIntro() {
         return new Promise(async (resolve) => {
           let finished = false;
@@ -2194,6 +2438,11 @@
       async function startApp() {
         if (started) return;
         started = true;
+        if (window.matchMedia("(max-width: 820px), (pointer: coarse)").matches) {
+          ui.preloadLayer?.remove();
+          return;
+        }
+        await runPreloader();
         resize();
         buildStackedWorld();
         makeButtons();
