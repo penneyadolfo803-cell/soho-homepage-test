@@ -77,6 +77,61 @@
           linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 42%, rgba(246, 248, 251, 0.5));
       }
 
+      .mobile-gate {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: none;
+        place-items: center;
+        padding: 1.5rem;
+        background:
+          radial-gradient(circle at 50% 12%, rgba(101, 199, 255, 0.2), transparent 18rem),
+          linear-gradient(180deg, #ffffff 0%, #f3f6fa 100%);
+      }
+
+      .mobile-gate-card {
+        width: min(100%, 25rem);
+        padding: 2rem 1.6rem;
+        border: 1px solid var(--line);
+        border-radius: 1.6rem;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 1.4rem 4rem rgba(24, 32, 51, 0.12);
+        text-align: left;
+      }
+
+      .mobile-gate-card b {
+        display: block;
+        color: #4aa9df;
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .mobile-gate-card h1 {
+        margin: 0.75rem 0 0.7rem;
+        font-size: clamp(2rem, 11vw, 3.2rem);
+        line-height: 0.98;
+      }
+
+      .mobile-gate-card p {
+        margin: 0 0 1.35rem;
+        color: var(--muted);
+        line-height: 1.75;
+      }
+
+      .mobile-gate-card a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.75rem;
+        padding: 0 1.15rem;
+        border-radius: 0.8rem;
+        background: #182033;
+        color: #fff;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
       .glass {
         border: 1px solid var(--line);
         background:
@@ -992,6 +1047,28 @@
         }
       }
 
+      @media (max-width: 820px), (pointer: coarse) {
+        body {
+          overflow: hidden;
+        }
+
+        #scene,
+        .soft-overlay,
+        .topbar,
+        .hud,
+        .intro,
+        .modal-layer,
+        .contact-film,
+        .cursor-ring,
+        .scene-nav {
+          display: none !important;
+        }
+
+        .mobile-gate {
+          display: grid;
+        }
+      }
+
       @media (max-width: 620px) {
         .action-list {
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1066,6 +1143,15 @@
       <link rel="preload" as="image" href="https://soho-design-assets-1415078226.cos.ap-hongkong.myqcloud.com/homepage/homepage-20260625-video-v2/assets/intro-poster.jpg">
   </head>
   <body>
+    <section class="mobile-gate" aria-label="移动端暂不可用">
+      <div class="mobile-gate-card">
+        <b>SOHO YUNZHI</b>
+        <h1>请使用电脑打开</h1>
+        <p>当前 3D 首页暂不支持手机端完整动画。请用电脑浏览器访问，以获得完整视频、动画与功能体验。</p>
+        <a href="https://sohofashion.online/design/">进入设计小助手</a>
+      </div>
+    </section>
+
     <canvas id="scene" aria-label="SOHO云知小助手 3D 主页"></canvas>
     <div class="soft-overlay"></div>
 
@@ -1223,15 +1309,15 @@
           look: new THREE.Vector3(2.1, 0.92, 0),
         },
         {
-          id: "soon",
-          label: "敬请期待",
-          sub: "即将上线",
-          chip: "SOON",
-          eyebrow: "敬请期待",
-          headline: "更多能力即将上线",
-          lead: "面向服装设计流程的更多智能能力正在准备。",
-          body: "更多 SOHO云知能力即将开放。",
-          stat: ["NEXT", "AI", "SOON"],
+          id: "design",
+          label: "设计小助手",
+          sub: "进入设计台",
+          chip: "DESIGN",
+          eyebrow: "设计小助手",
+          headline: "打开 SOHO 设计小助手",
+          lead: "进入 AI 服装设计、推款图片与 PPT 方案工作台。",
+          body: "点击进入网页版设计小助手，开始服装推款、图片生成与 PPT 方案任务。",
+          stat: ["AI", "PPT", "DESIGN"],
           accent: 0x8de6c3,
           block: new THREE.Vector3(6.3, 0.66, 0),
           camera: new THREE.Vector3(6.3, 1.62, 3.4),
@@ -1701,7 +1787,7 @@
         if (action.id === "test") openTestModal();
         if (action.id === "tutorial") openTutorialModal();
         if (action.id === "contact") runContactFilm();
-        if (action.id === "soon") openSoonModal();
+        if (action.id === "design") window.location.href = "https://sohofashion.online/design/";
       }
 
       function stepScene(direction) {
