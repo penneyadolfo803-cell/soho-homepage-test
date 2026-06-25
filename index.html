@@ -1464,15 +1464,72 @@
         },
       ];
 
+      function detectPerformanceProfile() {
+        const cores = Number(navigator.hardwareConcurrency || 4);
+        const memory = Number(navigator.deviceMemory || 4);
+        const dpr = Math.max(1, Number(window.devicePixelRatio || 1));
+        const renderPixels = window.innerWidth * window.innerHeight * dpr * dpr;
+        const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || false;
+        let gpu = "";
+
+        try {
+          const probe = document.createElement("canvas");
+          const gl = probe.getContext("webgl", { powerPreference: "high-performance" }) || probe.getContext("experimental-webgl");
+          const debugInfo = gl?.getExtension?.("WEBGL_debug_renderer_info");
+          gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : gl?.getParameter?.(gl.RENDERER) || "";
+        } catch (error) {
+          gpu = "";
+        }
+
+        const gpuText = gpu.toLowerCase();
+        let score = 0;
+        if (cores >= 8) score += 2;
+        else if (cores >= 4) score += 1;
+        else score -= 1;
+
+        if (memory >= 8) score += 2;
+        else if (memory >= 4) score += 1;
+        else score -= 1;
+
+        if (/rtx|gtx|radeon\s+rx|arc|apple\s+m|m[1-9]\b/.test(gpuText)) score += 2;
+        if (/uhd|hd graphics|iris|mali|adreno|swiftshader|llvmpipe|basic render|software/.test(gpuText)) score -= 2;
+        if (renderPixels > 8_500_000) score -= 2;
+        else if (renderPixels > 4_500_000) score -= 1;
+        if (reducedMotion) score -= 3;
+
+        const tier = score >= 4 ? "high" : score >= 1 ? "medium" : "low";
+        const labels = { high: "\u9ad8\u6027\u80fd\u6a21\u5f0f", medium: "\u5747\u8861\u6a21\u5f0f", low: "\u8f7b\u91cf\u6a21\u5f0f" };
+        return {
+          tier,
+          label: labels[tier],
+          cores,
+          memory,
+          gpu,
+          dpr,
+          reducedMotion,
+          pixelRatio: tier === "high" ? Math.min(dpr, 2) : tier === "medium" ? Math.min(dpr, 1.45) : Math.min(dpr, 1.05),
+          antialias: tier !== "low",
+          powerPreference: tier === "low" ? "default" : "high-performance",
+          reflectionMin: tier === "high" ? 900 : tier === "medium" ? 720 : 512,
+          reflectionMax: tier === "high" ? 1600 : tier === "medium" ? 1024 : 768,
+          raycastInterval: tier === "high" ? 0 : tier === "medium" ? 0.06 : 0.12,
+          minPreloadDelay: tier === "high" ? 4200 : tier === "medium" ? 5200 : 6400,
+          videoWarmTimeout: tier === "high" ? 22000 : tier === "medium" ? 24000 : 28000,
+        };
+      }
+
+      const performanceProfile = detectPerformanceProfile();
+      document.documentElement.dataset.performanceTier = performanceProfile.tier;
+
       const canvas = document.querySelector("#scene");
       const renderer = new THREE.WebGLRenderer({
         canvas,
-        antialias: true,
+        antialias: performanceProfile.antialias,
         alpha: true,
-        preserveDrawingBuffer: true,
-        powerPreference: "high-performance",
+        preserveDrawingBuffer: false,
+        powerPreference: performanceProfile.powerPreference,
       });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setPixelRatio(performanceProfile.pixelRatio);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.08;
@@ -1511,6 +1568,7 @@
       let lookRoute = null;
       let routeProgress = 1;
       const videoBlobCache = new Map();
+      let lastRaycastAt = 0;
 
       const ui = {
         actionList: document.querySelector("#actionList"),
@@ -1633,7 +1691,10 @@
 
       function buildStackedWorld() {
         const citySize = 19.2;
-        const reflectionSize = Math.min(1600, Math.max(900, Math.round(window.innerWidth * window.devicePixelRatio)));
+        const reflectionSize = Math.min(
+          performanceProfile.reflectionMax,
+          Math.max(performanceProfile.reflectionMin, Math.round(window.innerWidth * performanceProfile.pixelRatio)),
+        );
         const mirror = new Reflector(new THREE.PlaneGeometry(citySize, citySize), {
           clipBias: 0.003,
           textureWidth: reflectionSize,
@@ -2186,10 +2247,8 @@
         });
       }
 
-      function loadVideoAsset(src) {
-        if (!src) return Promise.resolve();
+      function waitForVideoReady(video, timeoutMs = 7000) {
         return new Promise((resolve) => {
-          const video = document.createElement("video");
           let done = false;
           const finish = () => {
             if (done) return;
@@ -2198,31 +2257,81 @@
             video.removeEventListener("canplay", finish);
             video.removeEventListener("canplaythrough", finish);
             video.removeEventListener("error", finish);
-            video.pause();
-            video.removeAttribute("src");
-            video.load();
+            window.clearTimeout(timer);
             resolve();
           };
-          video.muted = true;
-          video.playsInline = true;
-          video.preload = "auto";
+          const timer = window.setTimeout(finish, timeoutMs);
           video.addEventListener("loadeddata", finish, { once: true });
           video.addEventListener("canplay", finish, { once: true });
           video.addEventListener("canplaythrough", finish, { once: true });
           video.addEventListener("error", finish, { once: true });
-          video.src = src;
-          video.load();
           if (video.readyState >= 2) finish();
         });
       }
 
-      async function runPreloader() {
+      function waitForVideoEnded(video, timeoutMs) {
+        return new Promise((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            video.removeEventListener("ended", finish);
+            video.removeEventListener("error", finish);
+            window.clearTimeout(timer);
+            resolve();
+          };
+          const timer = window.setTimeout(finish, timeoutMs);
+          video.addEventListener("ended", finish, { once: true });
+          video.addEventListener("error", finish, { once: true });
+        });
+      }
+
+      async function warmPlayVideoAsset(src, options = {}) {
+        if (!src) return;
+        const video = options.video || document.createElement("video");
+        const owned = !options.video;
+        if (owned) {
+          video.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;";
+          document.body.appendChild(video);
+        }
+        video.muted = true;
+        video.defaultMuted = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        if (video.src !== src) video.src = src;
+        video.load();
+        await waitForVideoReady(video, Math.min(8000, options.timeoutMs || 16000));
+        try {
+          video.currentTime = 0;
+        } catch (error) {
+          // Some browsers reject currentTime before enough metadata is available; this is non-fatal.
+        }
+        try {
+          await video.play();
+          await waitForVideoEnded(video, options.timeoutMs || performanceProfile.videoWarmTimeout);
+        } catch (error) {
+          await waitForVideoReady(video, Math.min(5000, options.timeoutMs || 16000));
+        }
+        video.pause();
+        try {
+          video.currentTime = 0;
+        } catch (error) {
+          // Keep the decoded buffer even when seeking back is unavailable.
+        }
+        if (owned) {
+          video.removeAttribute("src");
+          video.load();
+          video.remove();
+        }
+      }
+
+            async function runPreloader() {
         if (!ui.preloadLayer) return;
         const stories = [
           "我是苏云知，正在把首页的灯光、影像和入口一件件摆好。",
-          "我先把开场影像收进后台，等你看到它时，它应该完整地亮起来。",
-          "头像、二维码、教程和联系入口也在排队就位，不让页面半截出现。",
-          "再等我确认一次素材状态，准备好后会直接进入 SOHO 云知主页。",
+          "我先把开场影像在后台静音跑一遍，让你看到时尽量不卡顿。",
+          "我也在根据这台电脑的 CPU、内存和显卡来调整 3D 画质。",
+          "头像、二维码、教程和视频都就位后，我再打开 SOHO 云知主页。",
         ];
         let storyIndex = 0;
         const storyTimer = window.setInterval(() => {
@@ -2232,20 +2341,21 @@
 
         const avatarSrc = document.querySelector(".brand-mark img")?.src;
         const assets = [
+          { name: "电脑性能", run: () => Promise.resolve() },
           { name: "头像", run: () => loadImageAsset(avatarSrc) },
           { name: "开场海报", run: () => loadImageAsset(ui.introVideo?.poster) },
           { name: "体验二维码", run: () => loadImageAsset(CONFIG.qrImage) },
           { name: "教程文件", run: () => fetch(CONFIG.tutorialJson, { cache: "force-cache" }).catch(() => undefined) },
-          { name: "首页视频", run: () => loadVideoAsset(CONFIG.introVideo) },
-          { name: "联系视频", run: () => loadVideoAsset(CONFIG.contactVideo) },
+          { name: "首页视频预播放", run: () => warmPlayVideoAsset(CONFIG.introVideo, { video: ui.introVideo, timeoutMs: performanceProfile.videoWarmTimeout }) },
+          { name: "联系视频预播放", run: () => warmPlayVideoAsset(CONFIG.contactVideo, { video: ui.contactVideo, timeoutMs: performanceProfile.videoWarmTimeout }) },
         ];
 
         let finished = 0;
-        updatePreload(8, "加载核心素材中");
-        const minDelay = wait(2800);
-        const tasks = assets.map((asset) => withTimeout(asset.run(), 12000).then(() => {
+        updatePreload(8, `已检测电脑性能：${performanceProfile.label}`);
+        const minDelay = wait(performanceProfile.minPreloadDelay);
+        const tasks = assets.map((asset) => withTimeout(asset.run(), performanceProfile.videoWarmTimeout + 3000).then(() => {
           finished += 1;
-          updatePreload(8 + (finished / assets.length) * 88, `已加载：${asset.name}`);
+          updatePreload(8 + (finished / assets.length) * 88, `已准备：${asset.name}`);
         }));
 
         await Promise.all([minDelay, Promise.all(tasks)]);
@@ -2315,10 +2425,13 @@
         const dt = Math.min(clock.getDelta(), 0.04);
         const t = clock.elapsedTime;
 
-        raycaster.setFromCamera(pointer, camera);
-        const hit = raycaster.intersectObjects(interactive, false)[0];
-        hoverIndex = hit ? hit.object.userData.actionIndex : -1;
-        document.body.classList.toggle("is-pointing", hoverIndex >= 0);
+        if (!performanceProfile.raycastInterval || t - lastRaycastAt >= performanceProfile.raycastInterval) {
+          lastRaycastAt = t;
+          raycaster.setFromCamera(pointer, camera);
+          const hit = raycaster.intersectObjects(interactive, false)[0];
+          hoverIndex = hit ? hit.object.userData.actionIndex : -1;
+          document.body.classList.toggle("is-pointing", hoverIndex >= 0);
+        }
 
         world.position.lerp(temp.set(-mouse.x * 0.12, 0, 0), 1 - Math.pow(0.004, dt));
         world.rotation.y += (mouse.x * 0.035 - world.rotation.y) * (1 - Math.pow(0.006, dt));
