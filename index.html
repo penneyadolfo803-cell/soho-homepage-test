@@ -2384,10 +2384,15 @@
           ui.skipIntro.addEventListener("click", finishIntro);
           ui.intro.classList.remove("is-playing");
           ui.introVideo.pause();
-          if (ui.introVideo.src !== CONFIG.introVideo) {
+          const currentSrc = ui.introVideo.currentSrc || ui.introVideo.src;
+          if (currentSrc !== CONFIG.introVideo) {
             ui.introVideo.src = CONFIG.introVideo;
+            ui.introVideo.load();
+            await waitForVideoReady(ui.introVideo, Math.min(4000, performanceProfile.videoWarmTimeout));
+          } else if (ui.introVideo.readyState < 2) {
+            ui.introVideo.load();
+            await waitForVideoReady(ui.introVideo, Math.min(4000, performanceProfile.videoWarmTimeout));
           }
-          ui.introVideo.load();
           if (finished) return;
           ui.introVideo.currentTime = 0;
           ui.introVideo.addEventListener("ended", finishIntro, { once: true });
@@ -2562,8 +2567,8 @@
         buildStackedWorld();
         makeButtons();
         setActive(0, true);
-        requestAnimationFrame(animate);
         await setupIntro();
+        requestAnimationFrame(animate);
       }
 
       startApp();
