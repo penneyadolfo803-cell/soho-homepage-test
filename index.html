@@ -270,6 +270,34 @@
         border-radius: 8px;
       }
 
+      html[data-performance-tier="low"] body {
+        background:
+          radial-gradient(circle at 18% 12%, rgba(101, 199, 255, 0.16), transparent 20rem),
+          radial-gradient(circle at 86% 24%, rgba(255, 154, 186, 0.12), transparent 18rem),
+          linear-gradient(180deg, #ffffff 0%, #f3f7fb 100%);
+      }
+
+      html[data-performance-tier="low"] .glass,
+      html[data-performance-tier="low"] .preload-card,
+      html[data-performance-tier="low"] .actions.glass,
+      html[data-performance-tier="low"] .modal,
+      html[data-performance-tier="low"] .film-stage {
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow:
+          0 0.7rem 1.8rem rgba(58, 76, 110, 0.09),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78);
+        backdrop-filter: blur(0.35rem);
+        -webkit-backdrop-filter: blur(0.35rem);
+      }
+
+      html[data-performance-tier="low"] *,
+      html[data-performance-tier="low"] *::before,
+      html[data-performance-tier="low"] *::after {
+        transition-duration: 120ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+
       .topbar {
         position: fixed;
         top: 1rem;
@@ -1493,14 +1521,20 @@
         else if (memory >= 4) score += 1;
         else score -= 1;
 
-        if (/rtx|gtx|radeon\s+rx|arc|apple\s+m|m[1-9]\b/.test(gpuText)) score += 2;
-        if (/uhd|hd graphics|iris|mali|adreno|swiftshader|llvmpipe|basic render|software/.test(gpuText)) score -= 2;
+        const highGpu = /rtx|gtx|radeon\s+rx|arc|apple\s+m|m[1-9]\b/.test(gpuText);
+        const lowGpu = /uhd|hd graphics|iris|mali|adreno|swiftshader|llvmpipe|basic render|software/.test(gpuText);
+        if (highGpu) score += 2;
+        if (lowGpu) score -= 2;
         if (renderPixels > 8_500_000) score -= 2;
         else if (renderPixels > 4_500_000) score -= 1;
         if (reducedMotion) score -= 3;
 
-        const tier = score >= 4 ? "high" : score >= 1 ? "medium" : "low";
+        const forcedTier = new URLSearchParams(window.location.search).get("perf");
+        const autoTier = score >= 4 ? "high" : score >= 1 ? "medium" : "low";
+        const tier = ["high", "medium", "low"].includes(forcedTier) ? forcedTier : autoTier;
         const labels = { high: "\u9ad8\u6027\u80fd\u6a21\u5f0f", medium: "\u5747\u8861\u6a21\u5f0f", low: "\u8f7b\u91cf\u6a21\u5f0f" };
+        const isHigh = tier === "high";
+        const isMedium = tier === "medium";
         return {
           tier,
           label: labels[tier],
@@ -1509,14 +1543,28 @@
           gpu,
           dpr,
           reducedMotion,
-          pixelRatio: tier === "high" ? Math.min(dpr, 2) : tier === "medium" ? Math.min(dpr, 1.45) : Math.min(dpr, 1.05),
-          antialias: tier !== "low",
+          lowGpu,
+          renderPixels,
+          pixelRatio: isHigh ? Math.min(dpr, 1.75) : isMedium ? Math.min(dpr, 1.2) : Math.min(dpr, 1),
+          antialias: isHigh,
           powerPreference: tier === "low" ? "default" : "high-performance",
-          reflectionMin: tier === "high" ? 900 : tier === "medium" ? 720 : 512,
-          reflectionMax: tier === "high" ? 1600 : tier === "medium" ? 1024 : 768,
-          raycastInterval: tier === "high" ? 0 : tier === "medium" ? 0.06 : 0.12,
-          minPreloadDelay: tier === "high" ? 4200 : tier === "medium" ? 5200 : 6400,
-          videoWarmTimeout: tier === "high" ? 22000 : tier === "medium" ? 24000 : 28000,
+          useEnvironment: tier !== "low",
+          useReflection: isHigh,
+          usePointGlow: tier !== "low",
+          useGlowShell: isHigh,
+          useStreetEdges: tier !== "low",
+          useFloatingBlocks: tier !== "low" && !reducedMotion,
+          gridRadius: isHigh ? 11 : isMedium ? 8 : 5,
+          gridStep: isHigh ? 0.78 : isMedium ? 1.02 : 1.38,
+          maxTowerHeight: isHigh ? 18 : isMedium ? 10 : 5,
+          reflectionMin: 900,
+          reflectionMax: 1400,
+          raycastInterval: isHigh ? 0 : isMedium ? 0.08 : 0.18,
+          frameInterval: isHigh ? 0 : isMedium ? 1 / 45 : 1 / 30,
+          floatAmplitude: isHigh ? 0.018 : isMedium ? 0.008 : 0,
+          parallax: isHigh ? 1 : isMedium ? 0.55 : 0,
+          minPreloadDelay: isHigh ? 4200 : isMedium ? 5200 : 6400,
+          videoWarmTimeout: isHigh ? 22000 : isMedium ? 24000 : 28000,
         };
       }
 
@@ -1538,8 +1586,10 @@
 
       const scene = new THREE.Scene();
       scene.fog = new THREE.FogExp2(0xf7f8fb, 0.016);
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+      if (performanceProfile.useEnvironment) {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+      }
 
       const camera = new THREE.PerspectiveCamera(50, 1, 0.04, 180);
       camera.position.copy(actions[0].camera);
@@ -1571,6 +1621,7 @@
       let routeProgress = 1;
       const videoBlobCache = new Map();
       let lastRaycastAt = 0;
+      let lastRenderAt = 0;
 
       const ui = {
         actionList: document.querySelector("#actionList"),
@@ -1641,27 +1692,39 @@
       function cubeMaterial(index, active = false, accent = 0x65c7ff) {
         const activeColor = new THREE.Color(accent).lerp(new THREE.Color(0xffffff), 0.45);
         const tint = new THREE.Color().setHSL(0.55 + (index % 9) * 0.025, 0.44, active ? 0.9 : 0.83);
+        if (performanceProfile.tier === "low") {
+          return new THREE.MeshStandardMaterial({
+            color: active ? activeColor : tint,
+            roughness: active ? 0.18 : 0.32,
+            metalness: active ? 0.08 : 0.02,
+            transparent: true,
+            opacity: active ? 0.72 : 0.32,
+            emissive: active ? accent : 0xffffff,
+            emissiveIntensity: active ? 0.28 : 0.01,
+            side: THREE.DoubleSide,
+          });
+        }
         return new THREE.MeshPhysicalMaterial({
           color: active ? activeColor : tint,
-          roughness: active ? 0.012 : 0.035,
+          roughness: active ? 0.018 : 0.05,
           metalness: active ? 0.04 : 0.02,
-          transmission: active ? 0.72 : 0.58,
-          thickness: active ? 2.4 : 1.7,
+          transmission: performanceProfile.tier === "high" ? (active ? 0.72 : 0.58) : (active ? 0.38 : 0.24),
+          thickness: performanceProfile.tier === "high" ? (active ? 2.4 : 1.7) : (active ? 1.2 : 0.7),
           transparent: true,
           opacity: active ? 0.74 : 0.34,
-          clearcoat: 1,
-          clearcoatRoughness: 0.008,
+          clearcoat: performanceProfile.tier === "high" ? 1 : 0.35,
+          clearcoatRoughness: performanceProfile.tier === "high" ? 0.008 : 0.06,
           reflectivity: active ? 1 : 0.82,
           ior: 1.5,
-          iridescence: active ? 0.22 : 0.08,
+          iridescence: performanceProfile.tier === "high" ? (active ? 0.22 : 0.08) : 0,
           iridescenceIOR: 1.3,
           specularIntensity: 1,
           specularColor: 0xffffff,
           emissive: active ? accent : 0xffffff,
-          emissiveIntensity: active ? 0.55 : 0.018,
+          emissiveIntensity: active ? 0.45 : 0.012,
           attenuationColor: active ? accent : 0xffffff,
           attenuationDistance: active ? 1.2 : 1.8,
-          envMapIntensity: active ? 4.4 : 3.35,
+          envMapIntensity: performanceProfile.tier === "high" ? (active ? 4.4 : 3.35) : (active ? 1.8 : 1.2),
           side: THREE.DoubleSide,
         });
       }
@@ -1693,31 +1756,39 @@
 
       function buildStackedWorld() {
         const citySize = 19.2;
-        const reflectionSize = Math.min(
-          performanceProfile.reflectionMax,
-          Math.max(performanceProfile.reflectionMin, Math.round(window.innerWidth * performanceProfile.pixelRatio)),
-        );
-        const mirror = new Reflector(new THREE.PlaneGeometry(citySize, citySize), {
-          clipBias: 0.003,
-          textureWidth: reflectionSize,
-          textureHeight: reflectionSize,
-          color: 0xf7fbff,
-        });
-        mirror.rotation.x = -Math.PI / 2;
-        mirror.position.y = -0.115;
-        world.add(mirror);
+        if (performanceProfile.useReflection) {
+          const reflectionSize = Math.min(
+            performanceProfile.reflectionMax,
+            Math.max(performanceProfile.reflectionMin, Math.round(window.innerWidth * performanceProfile.pixelRatio)),
+          );
+          const mirror = new Reflector(new THREE.PlaneGeometry(citySize, citySize), {
+            clipBias: 0.003,
+            textureWidth: reflectionSize,
+            textureHeight: reflectionSize,
+            color: 0xf7fbff,
+          });
+          mirror.rotation.x = -Math.PI / 2;
+          mirror.position.y = -0.115;
+          world.add(mirror);
+        }
 
-        const floorMat = new THREE.MeshPhysicalMaterial({
-          color: 0xf9fcff,
-          roughness: 0.055,
-          metalness: 0.05,
-          transparent: true,
-          opacity: 0.58,
-          clearcoat: 1,
-          clearcoatRoughness: 0.025,
-          reflectivity: 0.9,
-          envMapIntensity: 2.25,
-        });
+        const floorMat = performanceProfile.tier === "low"
+          ? new THREE.MeshBasicMaterial({
+              color: 0xf9fcff,
+              transparent: true,
+              opacity: 0.82,
+            })
+          : new THREE.MeshPhysicalMaterial({
+              color: 0xf9fcff,
+              roughness: 0.085,
+              metalness: 0.03,
+              transparent: true,
+              opacity: performanceProfile.useReflection ? 0.58 : 0.72,
+              clearcoat: performanceProfile.tier === "high" ? 1 : 0.25,
+              clearcoatRoughness: 0.05,
+              reflectivity: performanceProfile.tier === "high" ? 0.9 : 0.35,
+              envMapIntensity: performanceProfile.tier === "high" ? 2.25 : 1.15,
+            });
 
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(citySize, citySize), floorMat);
         floor.rotation.x = -Math.PI / 2;
@@ -1750,11 +1821,13 @@
           lane.position.set(x, -0.048, 0);
           world.add(lane);
 
-          for (const offset of [-streetWidth / 2, streetWidth / 2]) {
-            const edgeLine = new THREE.Mesh(new THREE.PlaneGeometry(0.022, citySize), streetLineMat);
-            edgeLine.rotation.x = -Math.PI / 2;
-            edgeLine.position.set(x + offset, -0.047, 0);
-            world.add(edgeLine);
+          if (performanceProfile.useStreetEdges) {
+            for (const offset of [-streetWidth / 2, streetWidth / 2]) {
+              const edgeLine = new THREE.Mesh(new THREE.PlaneGeometry(0.022, citySize), streetLineMat);
+              edgeLine.rotation.x = -Math.PI / 2;
+              edgeLine.position.set(x + offset, -0.047, 0);
+              world.add(edgeLine);
+            }
           }
         }
         for (const z of zStreetPositions) {
@@ -1768,21 +1841,23 @@
           lane.position.set(0, -0.046, z);
           world.add(lane);
 
-          for (const offset of [-streetWidth / 2, streetWidth / 2]) {
-            const edgeLine = new THREE.Mesh(new THREE.PlaneGeometry(citySize, 0.022), streetLineMat);
-            edgeLine.rotation.x = -Math.PI / 2;
-            edgeLine.position.set(0, -0.047, z + offset);
-            world.add(edgeLine);
+          if (performanceProfile.useStreetEdges) {
+            for (const offset of [-streetWidth / 2, streetWidth / 2]) {
+              const edgeLine = new THREE.Mesh(new THREE.PlaneGeometry(citySize, 0.022), streetLineMat);
+              edgeLine.rotation.x = -Math.PI / 2;
+              edgeLine.position.set(0, -0.047, z + offset);
+              world.add(edgeLine);
+            }
           }
         }
 
         const cubeSize = 0.48;
-        const gridStep = 0.78;
+        const gridStep = performanceProfile.gridStep;
         const streetClear = streetWidth * 0.86;
         let count = 0;
 
-        for (let gx = -11; gx <= 11; gx++) {
-          for (let gz = -11; gz <= 11; gz++) {
+        for (let gx = -performanceProfile.gridRadius; gx <= performanceProfile.gridRadius; gx++) {
+          for (let gz = -performanceProfile.gridRadius; gz <= performanceProfile.gridRadius; gz++) {
             const x = gx * gridStep;
             const z = gz * gridStep;
             const inStreetX = xStreetPositions.some((s) => Math.abs(x - s) < streetClear);
@@ -1799,7 +1874,10 @@
             const spike = heightNoise > 0.86 ? 5 + Math.floor(seededNoise(gx * 17 + gz * 97) * 6) : 0;
             const lowPocket = parcelMood < 0.26 && heightNoise < 0.55 ? -2 : 0;
             const centerFalloff = Math.max(0, 1 - Math.hypot(x / 9, z / 9));
-            const height = Math.max(1, Math.floor(2 + parcelMood * 8 + centerFalloff * 5 + heightNoise * 5 + spike + lowPocket));
+            const height = Math.min(
+              performanceProfile.maxTowerHeight,
+              Math.max(1, Math.floor(2 + parcelMood * 8 + centerFalloff * 5 + heightNoise * 5 + spike + lowPocket)),
+            );
 
             for (let level = 0; level < height; level++) {
               const mesh = new THREE.Mesh(roundedGeo, cubeMaterial(count));
@@ -1838,11 +1916,11 @@
           world.add(mesh);
 
           const halo = new THREE.Mesh(
-            new THREE.TorusGeometry(1.18, 0.025, 10, 80),
+            new THREE.TorusGeometry(1.18, 0.025, performanceProfile.tier === "high" ? 10 : 8, performanceProfile.tier === "high" ? 80 : 36),
             new THREE.MeshBasicMaterial({
               color: action.accent,
               transparent: true,
-              opacity: 0.38,
+              opacity: performanceProfile.tier === "low" ? 0.22 : 0.38,
               depthWrite: false,
             }),
           );
@@ -1851,27 +1929,31 @@
           halo.userData.spin = 0.2 + index * 0.04;
           world.add(halo);
 
-          const glow = new THREE.PointLight(action.accent, 0.8, 4.2, 1.65);
-          glow.position.copy(mesh.position);
-          glow.userData.actionId = action.id;
-          specialLights.set(action.id, glow);
-          world.add(glow);
+          if (performanceProfile.usePointGlow) {
+            const glow = new THREE.PointLight(action.accent, 0.8, 4.2, 1.65);
+            glow.position.copy(mesh.position);
+            glow.userData.actionId = action.id;
+            specialLights.set(action.id, glow);
+            world.add(glow);
+          }
 
-          const glowShell = new THREE.Mesh(
-            new RoundedBoxGeometry(1.22, 1.22, 1.22, 6, 0.2),
-            new THREE.MeshBasicMaterial({
-              color: action.accent,
-              transparent: true,
-              opacity: 0.04,
-              blending: THREE.AdditiveBlending,
-              depthWrite: false,
-              depthTest: true,
-            }),
-          );
-          glowShell.position.copy(mesh.position);
-          glowShell.userData.actionId = action.id;
-          specialGlowShells.set(action.id, glowShell);
-          world.add(glowShell);
+          if (performanceProfile.useGlowShell) {
+            const glowShell = new THREE.Mesh(
+              new RoundedBoxGeometry(1.22, 1.22, 1.22, 6, 0.2),
+              new THREE.MeshBasicMaterial({
+                color: action.accent,
+                transparent: true,
+                opacity: 0.04,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: true,
+              }),
+            );
+            glowShell.position.copy(mesh.position);
+            glowShell.userData.actionId = action.id;
+            specialGlowShells.set(action.id, glowShell);
+            world.add(glowShell);
+          }
 
           const label = new THREE.Mesh(
             new THREE.PlaneGeometry(1.65, 0.62),
@@ -1891,6 +1973,9 @@
         });
 
         window.__YUNZHI_DEBUG__ = {
+          performanceTier: performanceProfile.tier,
+          pixelRatio: performanceProfile.pixelRatio,
+          useReflection: performanceProfile.useReflection,
           normalCubeCount: count,
           specialCubeCount: actions.length,
           cubeShape: "all cubes use equal x/y/z scale",
@@ -2428,7 +2513,17 @@
         triggerAction(hoverIndex >= 0 ? hoverIndex : activeIndex);
       }
 
-      function animate() {
+      function animate(now = 0) {
+        if (document.hidden) {
+          requestAnimationFrame(animate);
+          return;
+        }
+        if (performanceProfile.frameInterval && now - lastRenderAt < performanceProfile.frameInterval * 1000) {
+          requestAnimationFrame(animate);
+          return;
+        }
+        lastRenderAt = now;
+
         const dt = Math.min(clock.getDelta(), 0.04);
         const t = clock.elapsedTime;
 
@@ -2440,8 +2535,8 @@
           document.body.classList.toggle("is-pointing", hoverIndex >= 0);
         }
 
-        world.position.lerp(temp.set(-mouse.x * 0.12, 0, 0), 1 - Math.pow(0.004, dt));
-        world.rotation.y += (mouse.x * 0.035 - world.rotation.y) * (1 - Math.pow(0.006, dt));
+        world.position.lerp(temp.set(-mouse.x * 0.12 * performanceProfile.parallax, 0, 0), 1 - Math.pow(0.004, dt));
+        world.rotation.y += (mouse.x * 0.035 * performanceProfile.parallax - world.rotation.y) * (1 - Math.pow(0.006, dt));
         world.rotation.x += (0 - world.rotation.x) * (1 - Math.pow(0.006, dt));
 
         if (cameraRoute && lookRoute && routeProgress < 1) {
@@ -2454,14 +2549,14 @@
           lookBase.lerp(lookTarget, 1 - Math.pow(0.00055, dt));
         }
 
-        camera.position.copy(cameraBase).add(temp2.set(mouse.x * 0.08, 0, 0));
-        currentLook.copy(lookBase).add(temp.set(mouse.x * 0.05, 0, 0));
+        camera.position.copy(cameraBase).add(temp2.set(mouse.x * 0.08 * performanceProfile.parallax, 0, 0));
+        currentLook.copy(lookBase).add(temp.set(mouse.x * 0.05 * performanceProfile.parallax, 0, 0));
         camera.lookAt(currentLook);
 
         world.traverse((obj) => {
           if (!obj.isMesh) return;
           if (obj.userData.baseY !== undefined) {
-            obj.position.y = obj.userData.baseY + Math.sin(t * obj.userData.float + obj.id) * 0.018;
+            obj.position.y = obj.userData.baseY + Math.sin(t * obj.userData.float + obj.id) * performanceProfile.floatAmplitude;
           }
           if (obj.userData.billboard) {
             obj.quaternion.copy(camera.quaternion);
